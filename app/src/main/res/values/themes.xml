@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.IPTV" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Player: tema AppCompat escuro, necessário para o MediaRouteButton/diálogo do Cast. -->
+    <style name="Theme.IPTV.Player" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

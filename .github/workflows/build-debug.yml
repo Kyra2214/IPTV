@@ -1,0 +1,47 @@
+name: Build debug
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # O projeto não tem gradlew/gradle-wrapper.jar; usa o Gradle 8.9 (o mesmo do gradle-wrapper.properties).
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      # Item 48a: roda os 150 testes de JVM (nunca rodaram até aqui).
+      - name: Testes unitários
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      # Item 48b: gera o APK debug.
+      - name: Build debug
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Relatórios de teste (sempre)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-de-teste
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+
+      - name: APK debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: iptv-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
