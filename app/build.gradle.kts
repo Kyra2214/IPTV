@@ -28,7 +28,7 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
-        freeCompilerArgs += "-J--add-modules=jdk.httpserver"
+        kotlinDaemonJvmArgs += "--add-modules=jdk.httpserver"
     }
 
     testOptions {
