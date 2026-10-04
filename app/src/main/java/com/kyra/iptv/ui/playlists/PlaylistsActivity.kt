@@ -22,6 +22,7 @@ import com.kyra.iptv.IptvApp
 import com.kyra.iptv.data.model.Playlist
 import com.kyra.iptv.data.model.SourceType
 import com.kyra.iptv.data.repository.PlaylistError
+import com.kyra.iptv.ui.LogoView
 import com.kyra.iptv.ui.Background
 import com.kyra.iptv.ui.COLOR_MUTED
 import com.kyra.iptv.ui.COLOR_TEXT
@@ -70,6 +71,7 @@ class PlaylistsActivity : Activity() {
             setGravity(Gravity.CENTER_VERTICAL)
             setPadding(dp(16), dp(8), dp(8), dp(8))
         }
+        header.addView(LogoView(this, animated = false), LinearLayout.LayoutParams(dp(36), dp(36)).apply { rightMargin = dp(10) })
         header.addView(TextView(this).apply {
             text = "IPTV"; textSize = 24f; setTextColor(COLOR_TEXT)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))

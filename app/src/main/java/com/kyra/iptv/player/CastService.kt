@@ -90,7 +90,7 @@ class CastService : Service() {
             this, 1, Intent(this, CastService::class.java).setAction(ACTION_STOP), flags,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(com.kyra.iptv.R.drawable.ic_stat_cast)
             .setContentTitle(if (device != null) "Transmitindo para $device" else "Transmitindo")
             .setContentText(channel ?: "")
             .setOngoing(true)

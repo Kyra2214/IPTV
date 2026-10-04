@@ -37,6 +37,10 @@ class IptvApp : Application() {
     @OptIn(UnstableApi::class)
     fun newStreamProbe(): StreamProbe = ExoStreamProbe(this)
 
+    /** Cast compartilhado entre telas: a transmissão sobrevive a sair do player para a lista de canais. */
+    @OptIn(UnstableApi::class)
+    val cast: com.kyra.iptv.player.CastManager by lazy { com.kyra.iptv.player.CastManager(this) }
+
     /** Fila entregue pela tela de canais ao player (evita serializar milhares de canais em um Intent). */
     @Volatile var playbackQueue: ChannelQueue? = null
 }

@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.IPTV" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Transições suaves entre telas. -->
+    <style name="Anim.Screens" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/screen_in</item>
+        <item name="android:activityOpenExitAnimation">@anim/screen_out</item>
+        <item name="android:activityCloseEnterAnimation">@anim/screen_back_in</item>
+        <item name="android:activityCloseExitAnimation">@anim/screen_back_out</item>
+    </style>
+
+    <style name="Theme.IPTV" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowAnimationStyle">@style/Anim.Screens</item>
+    </style>
 
     <!-- Player: tema AppCompat escuro, necessário para o MediaRouteButton/diálogo do Cast. -->
     <style name="Theme.IPTV.Player" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowAnimationStyle">@style/Anim.Screens</item>
     </style>
 </resources>

@@ -37,20 +37,26 @@ class CastManager(context: Context) {
     val deviceName: String?
         get() = castContext?.sessionManager?.currentCastSession?.castDevice?.friendlyName
 
-    fun start(listener: SessionAvailabilityListener) {
-        val ctx = castContext ?: return
-        if (player != null) return
-        player = CastPlayer(ctx).also { it.setSessionAvailabilityListener(listener) }
-    }
+    private var attached: SessionAvailabilityListener? = null
 
     /**
-     * Libera o [CastPlayer]. ATENÇÃO: no Media3, `CastPlayer.release()` encerra a sessão Cast
-     * (`endCurrentSession`). Por isso só deve ser chamado ao sair de vez do player — não ao minimizar.
+     * Liga [listener] ao [CastPlayer]. O CastPlayer é criado uma vez e vive com o processo (ver
+     * [IptvApp.cast]): assim a transmissão continua ao voltar para a lista de canais e escolher
+     * outro canal. `CastPlayer.release()` encerra a sessão Cast, por isso nunca é chamado.
      */
-    fun stop() {
-        player?.setSessionAvailabilityListener(null)
-        player?.release()
-        player = null
+    fun start(listener: SessionAvailabilityListener) {
+        val ctx = castContext ?: return
+        val p = player ?: CastPlayer(ctx, LiveMediaItemConverter()).also { player = it }
+        attached = listener
+        p.setSessionAvailabilityListener(listener)
+    }
+
+    /** Desliga [listener] (só se ainda for o ativo); a sessão e o [CastPlayer] continuam. */
+    fun detach(listener: SessionAvailabilityListener) {
+        if (attached === listener) {
+            attached = null
+            player?.setSessionAvailabilityListener(null)
+        }
     }
 
     /** Encerra a sessão Cast (o stream para no Chromecast). */

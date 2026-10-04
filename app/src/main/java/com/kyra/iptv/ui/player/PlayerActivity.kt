@@ -48,6 +48,7 @@ import com.kyra.iptv.player.StreamFailure
 import com.kyra.iptv.player.StreamSupport
 import com.kyra.iptv.player.StreamType
 import com.kyra.iptv.ui.Background
+import com.kyra.iptv.ui.LogoView
 import com.kyra.iptv.ui.applySystemBarsPadding
 import com.kyra.iptv.ui.dp
 
@@ -58,7 +59,7 @@ import com.kyra.iptv.ui.dp
  * Chromecast (Fase 6): botão Cast na barra superior (só aparece com dispositivos na rede). Ao
  * conectar, o ExoPlayer é liberado e o canal atual vai para o [androidx.media3.cast.CastPlayer];
  * ao desconectar, volta para o ExoPlayer. Trocar de canal durante o Cast transmite o novo canal.
- * Sair da tela durante o Cast encerra a transmissão; Home mantém (ao voltar, o canal é recarregado).
+ * Sair da tela (voltar) durante o Cast NÃO encerra a transmissão: dá para escolher outro canal na lista; "Parar transmissão" ou a notificação encerram.
  *
  * A fila vem de [IptvApp.playbackQueue] (a lista que o usuário via). Se o processo foi recriado e a
  * fila se perdeu, ela é remontada a partir da lista (EXTRA_PLAYLIST_ID) e do último canal.
@@ -94,6 +95,7 @@ class PlayerActivity : FragmentActivity() {
     private lateinit var nextButton: TextView
     private lateinit var playPauseButton: TextView
     private lateinit var castBox: LinearLayout
+    private lateinit var castBackdrop: View
     private lateinit var castTitle: TextView
     private lateinit var castNote: TextView
 
@@ -113,6 +115,7 @@ class PlayerActivity : FragmentActivity() {
             if (playbackState == Player.STATE_READY) {
                 retries = 0
                 liveRestarts = 0
+                if (casting) castTitle.text = cast.deviceName?.let { "Transmitindo para $it" } ?: "Transmitindo"
                 hideStatus()
                 scheduleHideControls()
             }
@@ -131,8 +134,8 @@ class PlayerActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        cast = CastManager(this)
-        // Voltar sempre sai: encerra o Cast (se houver) e fecha a tela, sem depender do onStop.
+        cast = app.cast
+        // Voltar sempre fecha a tela (a transmissão Cast, se houver, continua).
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = leave()
         })
@@ -172,34 +175,17 @@ class PlayerActivity : FragmentActivity() {
         started = false
         // Cada passo é isolado: uma falha no SDK do Cast não pode impedir a tela de fechar/minimizar.
         runCatching { releasePlayer() }
-        if (isFinishing) {
-            if (casting) runCatching { cast.endSession() }
-            releaseCast()
-        } else if (!casting) {
-            releaseCast()
-        }
-        // Minimizado durante o Cast: o CastPlayer continua vivo (liberá-lo encerraria a sessão).
+        runCatching { cast.player?.removeListener(listener) }
+        // Só desliga os ouvintes: o CastPlayer e a sessão continuam (voltar à lista, minimizar).
+        runCatching { cast.detach(sessionListener) }
         super.onStop()
     }
 
-    override fun onDestroy() {
-        releaseCast()
-        super.onDestroy()
-    }
-
-    private fun releaseCast() {
-        runCatching { cast.player?.removeListener(listener) }
-        runCatching { cast.stop() }
-        if (isFinishing) CastService.stop(this)
-    }
-
-    /** Sai do player. Durante o Cast, encerra a transmissão antes de fechar a tela. */
+    /**
+     * Sai do player. Durante o Cast a transmissão CONTINUA (para escolher outro canal na lista);
+     * para encerrá-la há o botão "Parar transmissão" e a notificação.
+     */
     private fun leave() {
-        if (casting) {
-            casting = false
-            runCatching { cast.endSession() }
-        }
-        CastService.stop(this)
         finish()
     }
 
@@ -272,7 +258,7 @@ class PlayerActivity : FragmentActivity() {
         val ch = queue?.current ?: return
         val wasCasting = casting
         casting = cast.hasSession
-        castBox.visibility = if (casting) View.VISIBLE else View.GONE
+        showCastUi(casting)
         if (casting) {
             CastService.start(this, cast.deviceName, ch.name)
             // Voltando de minimizado com a transmissão já rodando: não recarrega o stream.
@@ -306,8 +292,11 @@ class PlayerActivity : FragmentActivity() {
         retries = 0
         liveRestarts = 0
         hlsFallback = false
+        // Para o áudio/vídeo local já (libera a conexão com o provedor, que costuma limitar a 1 tela).
+        player?.let { it.playWhenReady = false; it.stop() }
+        castTitle.text = "Iniciando transmissão…"
+        showCastUi(true)
         releasePlayer()
-        castBox.visibility = View.VISIBLE
         CastService.start(this, cast.deviceName, ch.name)
         load(ch)
     }
@@ -318,7 +307,7 @@ class PlayerActivity : FragmentActivity() {
         casting = false
         cast.player?.stop()
         cast.player?.clearMediaItems()
-        castBox.visibility = View.GONE
+        showCastUi(false)
         CastService.stop(this)
         hideStatus()
         if (started) queue?.current?.let { load(it) }
@@ -328,7 +317,7 @@ class PlayerActivity : FragmentActivity() {
         val cp = cast.player ?: return
         val device = cast.deviceName
         CastService.start(this, device, ch.name)
-        castTitle.text = if (device != null) "Transmitindo para $device" else "Transmitindo"
+        castTitle.text = if (device != null) "Iniciando transmissão para $device…" else "Iniciando transmissão…"
         castNote.text = if (CastSupport.dependsOnHeaders(ch.headers)) CastSupport.HEADERS_WARNING else ""
         castNote.visibility = if (castNote.text.isEmpty()) View.GONE else View.VISIBLE
 
@@ -464,10 +453,28 @@ class PlayerActivity : FragmentActivity() {
 
     private fun setControlsVisible(visible: Boolean) {
         handler.removeCallbacks(hideControlsRunnable)
-        val v = if (visible) View.VISIBLE else View.GONE
-        topBar.visibility = v
-        bottomBar.visibility = v
+        fade(topBar, visible)
+        fade(bottomBar, visible)
         if (visible) scheduleHideControls()
+    }
+
+    /** Aparece/some com fade suave (em vez de piscar). */
+    private fun fade(v: View, show: Boolean) {
+        v.animate().cancel()
+        if (show) {
+            v.visibility = View.VISIBLE
+            v.animate().alpha(1f).setDuration(200).start()
+        } else {
+            v.animate().alpha(0f).setDuration(220).withEndAction {
+                if (v.alpha == 0f) v.visibility = View.GONE
+            }.start()
+        }
+    }
+
+    /** Tela de transmissão (logo animada sobre fundo em degradê) entra/sai com fade. */
+    private fun showCastUi(show: Boolean) {
+        fade(castBox, show)
+        fade(castBackdrop, show)
     }
 
     private fun scheduleHideControls() {
@@ -507,6 +514,16 @@ class PlayerActivity : FragmentActivity() {
         }
         root.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
+        // Fundo da tela de transmissão (atrás dos controles); some quando não há Cast.
+        castBackdrop = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF0B1B4D.toInt(), 0xFF050810.toInt())
+            )
+            visibility = View.GONE
+            alpha = 0f
+        }
+        root.addView(castBackdrop, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
         titleView = TextView(this).apply {
             textSize = 18f; setTextColor(Color.WHITE); maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -518,7 +535,9 @@ class PlayerActivity : FragmentActivity() {
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(0x99000000.toInt())
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xCC000000.toInt(), 0x00000000)
+            )
             addView(control("←") { leave() })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -539,7 +558,9 @@ class PlayerActivity : FragmentActivity() {
         bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setBackgroundColor(0x99000000.toInt())
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xCC000000.toInt(), 0x00000000)
+            )
             addView(prevButton)
             addView(playPauseButton)
             addView(nextButton)
@@ -578,6 +599,8 @@ class PlayerActivity : FragmentActivity() {
             gravity = Gravity.CENTER
             setPadding(dp(24), dp(12), dp(24), dp(12))
             visibility = View.GONE
+            alpha = 0f
+            addView(LogoView(context), LinearLayout.LayoutParams(dp(112), dp(112)).apply { bottomMargin = dp(20) })
             addView(castTitle)
             addView(castNote)
             addView(Button(context).apply {
