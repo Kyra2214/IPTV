@@ -1,10 +1,17 @@
 package com.kyra.iptv.data.repository
 
+import com.kyra.iptv.data.model.Channel
 import com.kyra.iptv.data.model.Playlist
 import com.kyra.iptv.data.model.SourceType
+import com.kyra.iptv.data.parser.M3uExporter
 import com.kyra.iptv.data.parser.M3uParser
 import com.kyra.iptv.data.parser.ParseResult
 import com.kyra.iptv.data.parser.TextEncoding
+import com.kyra.iptv.data.testing.ChannelSource
+import com.kyra.iptv.data.testing.ListAnalysis
+import com.kyra.iptv.data.testing.ListAnalyzer
+import com.kyra.iptv.data.testing.ParserChannelSource
+import com.kyra.iptv.data.testing.StreamTestConfig
 import com.kyra.iptv.storage.LocalStorage
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -55,6 +62,30 @@ class PlaylistRepository(
             PlaylistError.Storage(it)
         }
         return add(staged, name.orBlankDefault("Lista colada"), "", SourceType.PASTED)
+    }
+
+    /**
+     * Salva [channels] (os que passaram no teste de streams) como uma lista nova, tipo [SourceType.TESTED].
+     * A lista original não é alterada. Os headers e atributos de cada canal são preservados.
+     */
+    fun saveTested(channels: List<Channel>, name: String? = null): Playlist {
+        if (channels.isEmpty()) throw PlaylistError.Empty()
+        val file = try {
+            storage.newTempFile()
+        } catch (e: IOException) {
+            throw PlaylistError.Storage(e)
+        }
+        try {
+            val written = file.bufferedWriter(Charsets.UTF_8).use { M3uExporter.write(channels, it) }
+            if (written == 0) throw PlaylistError.Empty()
+            return add(Staged(file, written), name.orBlankDefault("Lista testada"), "", SourceType.TESTED)
+        } catch (e: IOException) {
+            file.delete()
+            throw PlaylistError.Storage(e)
+        } catch (t: Throwable) {
+            file.delete()
+            throw t
+        }
     }
 
     // ---- gerenciar ----------------------------------------------------------
@@ -109,13 +140,35 @@ class PlaylistRepository(
     /** Lê e interpreta o conteúdo salvo da lista (URLs relativas usam a URL de origem como base). */
     fun loadChannels(id: String): ParseResult {
         val playlist = get(id) ?: throw PlaylistError.NotFound()
-        val base = if (playlist.sourceType == SourceType.URL) playlist.source else null
         try {
-            return storage.openContent(id).use { M3uParser.parse(it, base) }
+            return storage.openContent(id).use { M3uParser.parse(it, baseUrlOf(playlist)) }
         } catch (e: IOException) {
             throw PlaylistError.Storage(e)
         }
     }
+
+    /** Números da lista salva (entradas, únicas, repetidas, inválidas, grupos), lidos em streaming. */
+    fun analyze(id: String): ListAnalysis {
+        val playlist = get(id) ?: throw PlaylistError.NotFound()
+        try {
+            return ListAnalyzer.analyze(storage.openContent(id), baseUrlOf(playlist))
+        } catch (e: IOException) {
+            throw PlaylistError.Storage(e)
+        }
+    }
+
+    /**
+     * Fonte que entrega os canais da lista salva um a um, para o teste de streams (a lista nunca fica
+     * inteira na memória). Quem recebe deve fechá-la ([ChannelSource.close]); o motor de teste faz isso.
+     */
+    fun openChannelSource(id: String, queueSize: Int = StreamTestConfig.DEFAULT_FEEDER_QUEUE_SIZE): ChannelSource {
+        val playlist = get(id) ?: throw PlaylistError.NotFound()
+        if (!storage.contentFile(id).exists()) throw PlaylistError.Storage(IOException("conteúdo ausente"))
+        return ParserChannelSource({ storage.openContent(id) }, baseUrlOf(playlist), queueSize)
+    }
+
+    private fun baseUrlOf(playlist: Playlist): String? =
+        if (playlist.sourceType == SourceType.URL) playlist.source else null
 
     // ---- internos -----------------------------------------------------------
 

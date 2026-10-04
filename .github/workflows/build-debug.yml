@@ -23,6 +23,13 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      # Compila app e testes em passos separados: um erro de compilação aparece isolado, antes dos testes.
+      - name: Compilar app
+        run: gradle :app:compileDebugKotlin --stacktrace
+
+      - name: Compilar testes
+        run: gradle :app:compileDebugUnitTestKotlin --stacktrace
+
       # Item 48a: roda os testes JVM. O teste de servidor HTTP usa uma API JDK
       # não exposta pelo compilador Kotlin do runner e fica fora desta etapa.
       - name: Testes unitários

@@ -28,6 +28,7 @@ import com.kyra.iptv.ui.COLOR_TEXT
 import com.kyra.iptv.ui.applySystemBarsPadding
 import com.kyra.iptv.ui.channels.ChannelsActivity
 import com.kyra.iptv.ui.dp
+import com.kyra.iptv.ui.testing.TestListActivity
 import com.kyra.iptv.ui.userMessage
 
 /** Tela 1 — Listas: adicionar (URL, arquivo, colar), abrir, atualizar, renomear e excluir. */
@@ -123,6 +124,7 @@ class PlaylistsActivity : Activity() {
         SourceType.URL -> "URL"
         SourceType.FILE -> "arquivo"
         SourceType.PASTED -> "colada"
+        SourceType.TESTED -> "testada"
     }
 
     private fun openPlaylist(p: Playlist) {
@@ -236,12 +238,17 @@ class PlaylistsActivity : Activity() {
             labels += "Atualizar"
             actions += { runWork("Atualizando…", { app.playlists.refresh(p.id) }) { "Atualizada: ${it.channelCount} canais" } }
         }
+        labels += "Testar streams"; actions += { openTest(p) }
         labels += "Renomear"; actions += { askRename(p) }
         labels += "Excluir"; actions += { confirmDelete(p) }
         AlertDialog.Builder(this)
             .setTitle(p.name)
             .setItems(labels.toTypedArray()) { _, which -> actions[which]() }
             .show()
+    }
+
+    private fun openTest(p: Playlist) {
+        startActivity(Intent(this, TestListActivity::class.java).putExtra(TestListActivity.EXTRA_PLAYLIST_ID, p.id))
     }
 
     private fun askRename(p: Playlist) {

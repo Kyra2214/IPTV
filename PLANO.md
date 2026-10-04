@@ -1,5 +1,7 @@
 # IPTV
 
+> **Garimpo (testar streams):** etapas 4–6 escritas, não compiladas; ver `GARIMPO.md`.
+>
 > **Status:** Fases 1 a 6 implementadas (exceto o item 38, testes reais com Chromecast) e **Fase 7 (Robustez) escrita, mas ainda não compilada nem executada**: este ambiente não tem Gradle, SDK Android, Media3, Play Services, `kotlinc` nem JUnit. Há 150 testes de JVM (parser, armazenamento, repositórios, catálogo/busca, fila, retry, política de erros do player, validação de URL/headers, regras de Cast, codificação de texto); em sessões anteriores só 34 deles (`player/` e catálogo) chegaram a rodar com `kotlinc`, e **nenhum rodou na Fase 7**. As telas (`PlayerActivity`, `ChannelsActivity`, `PlaylistsActivity`), o `CastManager` e o `IptvApp` dependem de Android e também nunca foram compilados. **Legenda:** `[x]` feito e verificável por leitura/busca no código; `[~]` escrito, mas **ainda não compilado/executado** (precisa de `./gradlew test` e de aparelho); `[ ]` pendente. Pendências reais: item 38 (Chromecast real), item 45 (medir memória), o primeiro build e os testes em aparelho listados em "Decisão da Fase 7". Aguardando ordem para iniciar a Fase 8 — APK.
 
 Aplicativo Android simples para reprodução de listas IPTV fornecidas pelo próprio usuário.

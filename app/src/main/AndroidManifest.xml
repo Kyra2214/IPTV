@@ -34,6 +34,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.testing.TestListActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.player.PlayerActivity"
             android:theme="@style/Theme.IPTV.Player"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|locale|layoutDirection|fontScale|density"

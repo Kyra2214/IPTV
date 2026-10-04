@@ -5,7 +5,7 @@ Nada aqui foi executado ainda: o ambiente onde o código foi escrito não tem Gr
 ## 48. Build debug (via GitHub Actions)
 1. Suba o projeto para o GitHub (a pasta `IPTV/` é a raiz do repositório; `.github/workflows/build-debug.yml` já está incluído).
 2. Aba **Actions → Build debug → Run workflow** (ou faça um push).
-3. O job roda `testDebugUnitTest` (150 testes) e depois `assembleDebug`.
+3. O job roda `testDebugUnitTest` (262 testes (anotações @Test)) e depois `assembleDebug`.
 4. Baixe o artefato **iptv-debug-apk** (e **relatorios-de-teste**, se algo falhar).
 5. Se o compilador reclamar, cole aqui o erro. Os pontos mais prováveis estão no PLANO.md ("Onde o compilador pode reclamar"): `IptvApp`, `PlayerActivity.handleError/toFailure`, `ChannelsActivity.refresh`, `PlaylistRepository.stage`, `M3uParser.scan`.
 

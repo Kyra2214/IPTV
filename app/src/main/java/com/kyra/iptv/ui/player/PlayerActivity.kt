@@ -26,12 +26,9 @@ import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -43,7 +40,7 @@ import com.kyra.iptv.player.CastManager
 import com.kyra.iptv.player.CastSupport
 import com.kyra.iptv.player.ChannelQueue
 import com.kyra.iptv.player.FailureAction
-import com.kyra.iptv.player.FailureKind
+import com.kyra.iptv.player.MediaSupport
 import com.kyra.iptv.player.PlaybackErrorPolicy
 import com.kyra.iptv.player.RetryPolicy
 import com.kyra.iptv.player.StreamFailure
@@ -298,24 +295,9 @@ class PlayerActivity : FragmentActivity() {
 
     /** Prepara [ch] no ExoPlayer (headers próprios, redirects entre http/https, timeouts). */
     private fun loadLocal(ch: Channel) {
-        val headers = StreamSupport.sanitizeHeaders(ch.headers)
-        val userAgent = headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
-        val others = headers.filterKeys { !it.equals("User-Agent", ignoreCase = true) }
-        val http = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(CONNECT_TIMEOUT_MS)
-            .setReadTimeoutMs(READ_TIMEOUT_MS)
-        if (userAgent != null) http.setUserAgent(userAgent)
-        if (others.isNotEmpty()) http.setDefaultRequestProperties(others)
-
+        val http = MediaSupport.httpFactory(ch.headers, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS)
         val type = if (hlsFallback) StreamType.HLS else StreamSupport.detectType(ch.streamUrl)
-        val item = MediaItem.Builder().setUri(ch.streamUrl).apply {
-            when (type) {
-                StreamType.HLS -> setMimeType(MimeTypes.APPLICATION_M3U8)
-                StreamType.DASH -> setMimeType(MimeTypes.APPLICATION_MPD)
-                StreamType.UNKNOWN -> Unit // o ExoPlayer detecta (TS, MP4...)
-            }
-        }.build()
+        val item = MediaSupport.mediaItem(ch.streamUrl, type)
 
         val p = ensurePlayer()
         p.setMediaSource(DefaultMediaSourceFactory(http).createMediaSource(item))
@@ -358,25 +340,7 @@ class PlayerActivity : FragmentActivity() {
     }
 
     /** Traduz o erro do Media3 para o modelo puro de [PlaybackErrorPolicy]. */
-    private fun toFailure(e: PlaybackException): StreamFailure {
-        val status = (e.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
-        val kind = when (e.errorCode) {
-            PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> FailureKind.BEHIND_LIVE_WINDOW
-            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> FailureKind.TIMEOUT
-            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
-            PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> FailureKind.NETWORK
-            PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED -> FailureKind.CLEARTEXT_NOT_PERMITTED
-            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
-            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED -> FailureKind.UNRECOGNIZED_FORMAT
-            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-            PlaybackException.ERROR_CODE_DECODING_FAILED,
-            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> FailureKind.DECODER
-            else -> FailureKind.OTHER
-        }
-        return StreamFailure(kind, status)
-    }
+    private fun toFailure(e: PlaybackException): StreamFailure = MediaSupport.toFailure(e)
 
     // ---- ações ----------------------------------------------------------------
 
