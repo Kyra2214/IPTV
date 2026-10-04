@@ -28,6 +28,13 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += "-J--add-modules=jdk.httpserver"
+    }
+
+    testOptions {
+        unitTests.all {
+            it.jvmArgs("--add-modules=jdk.httpserver")
+        }
     }
 }
 
