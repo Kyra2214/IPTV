@@ -37,6 +37,7 @@ import com.google.android.gms.cast.framework.CastButtonFactory
 import com.kyra.iptv.IptvApp
 import com.kyra.iptv.data.model.Channel
 import com.kyra.iptv.player.CastManager
+import com.kyra.iptv.player.CastService
 import com.kyra.iptv.player.CastSupport
 import com.kyra.iptv.player.ChannelQueue
 import com.kyra.iptv.player.FailureAction
@@ -162,6 +163,7 @@ class PlayerActivity : FragmentActivity() {
         super.onStart()
         started = true
         cast.start(sessionListener)
+        cast.player?.removeListener(listener)
         cast.player?.addListener(listener)
         startPlayback()
     }
@@ -170,11 +172,25 @@ class PlayerActivity : FragmentActivity() {
         started = false
         // Cada passo é isolado: uma falha no SDK do Cast não pode impedir a tela de fechar/minimizar.
         runCatching { releasePlayer() }
+        if (isFinishing) {
+            if (casting) runCatching { cast.endSession() }
+            releaseCast()
+        } else if (!casting) {
+            releaseCast()
+        }
+        // Minimizado durante o Cast: o CastPlayer continua vivo (liberá-lo encerraria a sessão).
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        releaseCast()
+        super.onDestroy()
+    }
+
+    private fun releaseCast() {
         runCatching { cast.player?.removeListener(listener) }
         runCatching { cast.stop() }
-        // Saiu da tela (voltar/←) durante o Cast: encerra a transmissão. Home mantém a sessão.
-        if (isFinishing && casting) runCatching { cast.endSession() }
-        super.onStop()
+        if (isFinishing) CastService.stop(this)
     }
 
     /** Sai do player. Durante o Cast, encerra a transmissão antes de fechar a tela. */
@@ -183,6 +199,7 @@ class PlayerActivity : FragmentActivity() {
             casting = false
             runCatching { cast.endSession() }
         }
+        CastService.stop(this)
         finish()
     }
 
@@ -253,8 +270,17 @@ class PlayerActivity : FragmentActivity() {
     /** Começa (ou retoma) a reprodução do canal atual no player certo: Cast, se já houver sessão; senão local. */
     private fun startPlayback() {
         val ch = queue?.current ?: return
+        val wasCasting = casting
         casting = cast.hasSession
         castBox.visibility = if (casting) View.VISIBLE else View.GONE
+        if (casting) {
+            CastService.start(this, cast.deviceName, ch.name)
+            // Voltando de minimizado com a transmissão já rodando: não recarrega o stream.
+            if (wasCasting && (cast.player?.mediaItemCount ?: 0) > 0) {
+                castTitle.text = cast.deviceName?.let { "Transmitindo para $it" } ?: "Transmitindo"
+                return
+            }
+        }
         load(ch)
     }
 
@@ -282,6 +308,7 @@ class PlayerActivity : FragmentActivity() {
         hlsFallback = false
         releasePlayer()
         castBox.visibility = View.VISIBLE
+        CastService.start(this, cast.deviceName, ch.name)
         load(ch)
     }
 
@@ -292,6 +319,7 @@ class PlayerActivity : FragmentActivity() {
         cast.player?.stop()
         cast.player?.clearMediaItems()
         castBox.visibility = View.GONE
+        CastService.stop(this)
         hideStatus()
         if (started) queue?.current?.let { load(it) }
     }
@@ -299,6 +327,7 @@ class PlayerActivity : FragmentActivity() {
     private fun loadCast(ch: Channel) {
         val cp = cast.player ?: return
         val device = cast.deviceName
+        CastService.start(this, device, ch.name)
         castTitle.text = if (device != null) "Transmitindo para $device" else "Transmitindo"
         castNote.text = if (CastSupport.dependsOnHeaders(ch.headers)) CastSupport.HEADERS_WARNING else ""
         castNote.visibility = if (castNote.text.isEmpty()) View.GONE else View.VISIBLE

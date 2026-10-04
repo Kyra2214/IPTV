@@ -10,8 +10,7 @@ import com.google.android.gms.cast.framework.CastContext
  * Cast do stream (não espelhamento) via Media3 [CastPlayer].
  *
  * Mantém o `CastContext` (pode não existir: aparelho sem Google Play Services) e um [CastPlayer]
- * que só vive enquanto a tela do player está visível (onStart..onStop). A sessão Cast em si é do
- * framework e continua mesmo sem o [CastPlayer]. A troca ExoPlayer ↔ CastPlayer é feita pela
+ * que, durante uma transmissão, fica vivo mesmo com o app minimizado (liberá-lo encerraria a sessão). A troca ExoPlayer ↔ CastPlayer é feita pela
  * `PlayerActivity` a partir de [SessionAvailabilityListener].
  */
 @UnstableApi
@@ -44,7 +43,10 @@ class CastManager(context: Context) {
         player = CastPlayer(ctx).also { it.setSessionAvailabilityListener(listener) }
     }
 
-    /** Libera o [CastPlayer]; não encerra a sessão. */
+    /**
+     * Libera o [CastPlayer]. ATENÇÃO: no Media3, `CastPlayer.release()` encerra a sessão Cast
+     * (`endCurrentSession`). Por isso só deve ser chamado ao sair de vez do player — não ao minimizar.
+     */
     fun stop() {
         player?.setSessionAvailabilityListener(null)
         player?.release()
