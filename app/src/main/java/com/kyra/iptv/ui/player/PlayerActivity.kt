@@ -131,8 +131,18 @@ class PlayerActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         cast = CastManager(this)
+        // Voltar sempre sai: encerra o Cast (se houver) e fecha a tela, sem depender do onStop.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = leave()
+        })
         setContentView(buildUi())
         applyFullscreen()
+        // Android 13+: sem esta permissão a notificação do Cast (que mantém a conexão) não aparece.
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
 
         queue = app.playbackQueue
         if (queue == null) {
@@ -158,12 +168,22 @@ class PlayerActivity : FragmentActivity() {
 
     override fun onStop() {
         started = false
-        releasePlayer()
-        cast.player?.removeListener(listener)
-        cast.stop()
+        // Cada passo é isolado: uma falha no SDK do Cast não pode impedir a tela de fechar/minimizar.
+        runCatching { releasePlayer() }
+        runCatching { cast.player?.removeListener(listener) }
+        runCatching { cast.stop() }
         // Saiu da tela (voltar/←) durante o Cast: encerra a transmissão. Home mantém a sessão.
-        if (isFinishing && casting) cast.endSession()
+        if (isFinishing && casting) runCatching { cast.endSession() }
         super.onStop()
+    }
+
+    /** Sai do player. Durante o Cast, encerra a transmissão antes de fechar a tela. */
+    private fun leave() {
+        if (casting) {
+            casting = false
+            runCatching { cast.endSession() }
+        }
+        finish()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -470,7 +490,7 @@ class PlayerActivity : FragmentActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(0x99000000.toInt())
-            addView(control("←") { finish() })
+            addView(control("←") { leave() })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(titleView)
