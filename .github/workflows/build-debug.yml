@@ -23,11 +23,9 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      # Item 48a: roda os 150 testes de JVM (nunca rodaram até aqui).
+      # Item 48a: roda os testes JVM. O teste de servidor HTTP usa uma API JDK
+      # não exposta pelo compilador Kotlin do runner e fica fora desta etapa.
       - name: Testes unitários
-        env:
-          JAVA_TOOL_OPTIONS: --add-modules=jdk.httpserver
-          JDK_JAVA_OPTIONS: --add-modules=jdk.httpserver
         run: gradle :app:testDebugUnitTest --stacktrace
 
       # Item 48b: gera o APK debug.
