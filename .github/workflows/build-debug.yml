@@ -27,6 +27,7 @@ jobs:
       - name: Testes unitários
         env:
           JAVA_TOOL_OPTIONS: --add-modules=jdk.httpserver
+          JDK_JAVA_OPTIONS: --add-modules=jdk.httpserver
         run: gradle :app:testDebugUnitTest --stacktrace
 
       # Item 48b: gera o APK debug.
