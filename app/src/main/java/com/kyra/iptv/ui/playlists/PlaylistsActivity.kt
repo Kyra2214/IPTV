@@ -125,6 +125,7 @@ class PlaylistsActivity : Activity() {
         SourceType.FILE -> "arquivo"
         SourceType.PASTED -> "colada"
         SourceType.TESTED -> "testada"
+        SourceType.MERGED -> "mesclada"
     }
 
     private fun openPlaylist(p: Playlist) {
@@ -137,11 +138,12 @@ class PlaylistsActivity : Activity() {
         if (busy) return
         AlertDialog.Builder(this)
             .setTitle("Adicionar lista")
-            .setItems(arrayOf("Por URL", "Arquivo M3U/M3U8", "Colar conteúdo")) { _, which ->
+            .setItems(arrayOf("Por URL", "Arquivo M3U/M3U8", "Colar conteúdo", "Juntar listas existentes")) { _, which ->
                 when (which) {
                     0 -> askUrl()
                     1 -> pickFile()
                     2 -> askPaste()
+                    3 -> askMerge()
                 }
             }
             .show()
@@ -191,6 +193,46 @@ class PlaylistsActivity : Activity() {
                 val c = content.text.toString()
                 val n = name.text.toString()
                 runWork("Importando…", { app.playlists.importFromText(c, n) }) { "Lista adicionada: ${it.name} (${it.channelCount} canais)" }
+            }
+            .show()
+    }
+
+    private fun askMerge() {
+        val all = items
+        if (all.size < 2) {
+            toast("É preciso ter pelo menos duas listas")
+            return
+        }
+        val labels = all.map { "${it.name} (${it.channelCount})" }.toTypedArray()
+        val checked = BooleanArray(all.size) { true } // todas marcadas; desmarque as que não quer
+        AlertDialog.Builder(this)
+            .setTitle("Juntar listas")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Continuar") { _, _ ->
+                val ids = all.filterIndexed { i, _ -> checked[i] }.map { it.id }
+                if (ids.size < 2) toast("Escolha pelo menos duas listas") else askMergeName(ids)
+            }
+            .show()
+    }
+
+    private fun askMergeName(ids: List<String>) {
+        val defaultName = "Todas juntas"
+        val name = field("Nome").apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(defaultName)
+            setSelection(defaultName.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Nome da lista nova")
+            .setMessage("URLs repetidas entram uma vez só. As listas originais não mudam.")
+            .setView(form(name))
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Juntar") { _, _ ->
+                val n = name.text.toString()
+                runWork("Juntando…", { app.playlists.merge(ids, n) }) {
+                    "Lista criada: ${it.playlist.name} (${it.merged} canais, ${it.duplicates} repetidos removidos)"
+                }
             }
             .show()
     }

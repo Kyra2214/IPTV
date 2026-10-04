@@ -11,6 +11,7 @@ sealed class PlaylistError(message: String, cause: Throwable? = null) : Exceptio
     class NotAChannelList :
         PlaylistError("Isto parece um stream HLS único, não uma lista de canais IPTV")
     class Timeout : PlaylistError("Tempo esgotado ao carregar a lista")
+    class NotEnoughLists : PlaylistError("Escolha pelo menos duas listas para juntar")
     class NotFound : PlaylistError("Lista não encontrada")
     class NotRefreshable : PlaylistError("Só listas importadas por URL podem ser atualizadas")
     class Network(message: String, cause: Throwable? = null) : PlaylistError(message, cause)

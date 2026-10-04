@@ -16,17 +16,25 @@ object M3uExporter {
 
     /** Grava [channels] em [out] e devolve quantos foram escritos (canais com URL inutilizável são pulados). */
     fun write(channels: Iterable<Channel>, out: Appendable): Int {
-        out.append("#EXTM3U\n")
+        writeHeader(out)
         var written = 0
-        for (ch in channels) {
-            if (!StreamSupport.isPlayable(ch.streamUrl)) continue
-            writeChannel(ch, out)
-            written++
-        }
+        for (ch in channels) if (writeChannel(ch, out)) written++
         return written
     }
 
-    private fun writeChannel(ch: Channel, out: Appendable) {
+    /** Escrita canal a canal (para quem lê de várias fontes sem juntar tudo na memória): primeiro o cabeçalho... */
+    fun writeHeader(out: Appendable) {
+        out.append("#EXTM3U\n")
+    }
+
+    /** ...depois cada canal. `false` se a URL é inutilizável e o canal foi pulado. */
+    fun writeChannel(ch: Channel, out: Appendable): Boolean {
+        if (!StreamSupport.isPlayable(ch.streamUrl)) return false
+        writeEntry(ch, out)
+        return true
+    }
+
+    private fun writeEntry(ch: Channel, out: Appendable) {
         val headers = StreamSupport.sanitizeHeaders(ch.headers)
 
         out.append("#EXTINF:-1")

@@ -26,5 +26,8 @@ O `PLANO-GARIMPO.md` citado nos comentários do código não estava no pacote re
 3. Testes que mais podem falhar por tempo/concorrência (usam threads reais): `ParserChannelSourceTest.feederDoesNotReadFarAheadOfTheConsumer`, `engineCancelClosesTheReader`, `StreamTestSessionTest.listenersGetStateChangesAndCanBeRemoved`.
 4. Se algo falhar, cole aqui o erro do passo do workflow (não o resumo).
 
+## Juntar listas
+`PlaylistRepository.merge(ids, nome)` (menu "+ Adicionar lista → Juntar listas existentes"): lê uma lista por vez em streaming, descarta URLs repetidas (a primeira vence), cria uma lista `MERGED` ("mesclada"). Dica: junte só as listas "testadas" para não trazer canais mortos de volta; juntar listas não testadas e testar o resultado leva muito mais tempo.
+
 ## Pendente (exige aparelho)
 HLS real, stream fora do ar, header obrigatório, cancelamento com vários testes ativos, memória do motor com listas de ~150 mil canais (o motor guarda todos os resultados) e uso de rede com 6–8 testes simultâneos.

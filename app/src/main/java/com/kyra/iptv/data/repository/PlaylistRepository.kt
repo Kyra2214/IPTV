@@ -88,6 +88,55 @@ class PlaylistRepository(
         }
     }
 
+    /** Resultado de [merge]: a lista criada, quantos canais entraram e quantas URLs repetidas foram descartadas. */
+    class MergeResult(val playlist: Playlist, val merged: Int, val duplicates: Int)
+
+    /**
+     * Junta várias listas salvas em uma nova ([SourceType.MERGED]), na ordem de [ids]. URLs repetidas
+     * (dentro de uma lista ou entre listas) entram uma vez só: a primeira ocorrência vence. Lê uma lista
+     * por vez, em streaming; as originais não são alteradas. Respeita o limite de canais.
+     */
+    fun merge(ids: List<String>, name: String? = null): MergeResult {
+        val distinct = ids.distinct()
+        if (distinct.size < 2) throw PlaylistError.NotEnoughLists()
+        val sources = distinct.map { get(it) ?: throw PlaylistError.NotFound() }
+        val file = try {
+            storage.newTempFile()
+        } catch (e: IOException) {
+            throw PlaylistError.Storage(e)
+        }
+        try {
+            val seen = HashSet<String>()
+            var written = 0
+            var duplicates = 0
+            file.bufferedWriter(Charsets.UTF_8).use { w ->
+                M3uExporter.writeHeader(w)
+                for (p in sources) {
+                    val stats = storage.openContent(p.id).use { reader ->
+                        M3uParser.scan(reader, baseUrlOf(p)) { ch ->
+                            if (!seen.add(ch.id)) {
+                                duplicates++
+                            } else {
+                                if (written >= maxChannels) throw PlaylistError.TooManyChannels(maxChannels)
+                                if (M3uExporter.writeChannel(ch, w)) written++
+                            }
+                        }
+                    }
+                    duplicates += stats.duplicates
+                }
+            }
+            if (written == 0) throw PlaylistError.Empty()
+            val playlist = add(Staged(file, written), name.orBlankDefault("Listas juntas"), "", SourceType.MERGED)
+            return MergeResult(playlist, written, duplicates)
+        } catch (e: IOException) {
+            file.delete()
+            throw PlaylistError.Storage(e)
+        } catch (t: Throwable) {
+            file.delete()
+            throw t
+        }
+    }
+
     // ---- gerenciar ----------------------------------------------------------
 
     /** Baixa de novo a URL de origem e substitui o conteúdo salvo. Só para listas URL. */
