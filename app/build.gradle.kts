@@ -13,6 +13,18 @@ android {
     namespace = "com.kyra.iptv"
     compileSdk = 35
 
+    val stableKeystore = rootProject.file("iptv-stable-debug.keystore")
+    if (stableKeystore.exists()) {
+        signingConfigs {
+            create("stableDebug") {
+                storeFile = stableKeystore
+                storePassword = System.getenv("IPTV_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("IPTV_KEY_ALIAS") ?: "iptv-stable-debug"
+                keyPassword = System.getenv("IPTV_KEY_PASSWORD") ?: ""
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.kyra.iptv"
         minSdk = 24
@@ -22,6 +34,11 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            if (stableKeystore.exists()) {
+                signingConfig = signingConfigs.getByName("stableDebug")
+            }
+        }
         release {
             isMinifyEnabled = false
         }
