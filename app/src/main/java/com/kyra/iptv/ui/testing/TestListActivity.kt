@@ -213,7 +213,7 @@ class TestListActivity : Activity() {
     private fun startTest() {
         val s = session ?: return
         try {
-            s.start(StreamTestConfig(concurrency = concurrency))
+            s.start(StreamTestConfig(concurrency = concurrency, timeoutRetries = 1))
         } catch (e: Exception) {
             toast(userMessage(e))
         }

@@ -50,7 +50,7 @@ class StreamTestEngine(
     private val progressIntervalMs: Long = DEFAULT_PROGRESS_INTERVAL_MS,
     private val cancelGraceMs: Long = DEFAULT_CANCEL_GRACE_MS,
 ) {
-    private class Active(val channel: Channel, val startedAt: Long) {
+    private class Active(val channel: Channel, val startedAt: Long, val attempt: Int, val cfg: StreamTestConfig) {
         var handle: ProbeHandle? = null
         var watchdog: ScheduledFuture<*>? = null
     }
@@ -65,6 +65,9 @@ class StreamTestEngine(
     // Estado da thread de coordenação.
     private val active = HashMap<Long, Active>()
     private val seenIds = HashSet<String>()
+    /** Canais que deram timeout e serão testados de novo (com prazos maiores) depois do resto da lista. */
+    private val retryQueue = ArrayDeque<Channel>()
+    private val retryConfig: StreamTestConfig by lazy { config.forRetry() }
     private var seq = 0L
     private var started = false
     private var paused = false
@@ -121,6 +124,7 @@ class StreamTestEngine(
         if (cancelled || state.isTerminal) return@post
         cancelled = true
         paused = false
+        retryQueue.clear()
         setState(EngineState.CANCELLING)
         for (a in active.values) guarded { a.handle?.cancel() }
         guarded { source.close() }
@@ -148,38 +152,45 @@ class StreamTestEngine(
     // ---- coordenação (sempre na thread do motor) ----------------------------
 
     private fun fill() {
-        while (!paused && !cancelled && !sourceExhausted && active.size < config.concurrency) {
-            val channel = try {
-                source.next()
-            } catch (t: Throwable) {
-                sourceFailed = true
-                null
+        while (!paused && !cancelled) {
+            if (active.size >= config.concurrency) break
+            if (!sourceExhausted) {
+                val channel = try {
+                    source.next()
+                } catch (t: Throwable) {
+                    sourceFailed = true
+                    null
+                }
+                if (channel == null) {
+                    sourceExhausted = true
+                    continue // passa às tentativas extras, se houver
+                }
+                if (!seenIds.add(channel.id)) {
+                    synchronized(lock) { skippedDuplicates++ }
+                    continue
+                }
+                launch(channel, attempt = 0)
+            } else {
+                // Fim da lista: reconfere os que deram timeout, com prazos maiores.
+                launch(retryQueue.removeFirstOrNull() ?: break, attempt = 1)
             }
-            if (channel == null) {
-                sourceExhausted = true
-                break
-            }
-            if (!seenIds.add(channel.id)) {
-                synchronized(lock) { skippedDuplicates++ }
-                continue
-            }
-            launch(channel)
         }
         maybeFinish()
     }
 
-    private fun launch(channel: Channel) {
+    private fun launch(channel: Channel, attempt: Int) {
         val token = ++seq
-        val a = Active(channel, clock())
+        val cfg = if (attempt == 0) config else retryConfig
+        val a = Active(channel, clock(), attempt, cfg)
         active[token] = a
         if (active.size > peakConcurrency) peakConcurrency = active.size
         a.watchdog = coordinator.schedule(
             Runnable { guarded { onWatchdog(token) } },
-            config.hardTimeoutMs,
+            cfg.hardTimeoutMs,
             TimeUnit.MILLISECONDS,
         )
         try {
-            a.handle = probe.start(channel, config) { signal -> post { complete(token, signal) } }
+            a.handle = probe.start(channel, cfg) { signal -> post { complete(token, signal) } }
         } catch (t: Throwable) {
             // Sonda defeituosa: vira falha deste canal. Assíncrono de propósito (sem recursão em listas grandes).
             post { complete(token, ProbeSignal.Other) }
@@ -189,7 +200,7 @@ class StreamTestEngine(
     private fun complete(token: Long, signal: ProbeSignal) {
         val a = active.remove(token) ?: return // resposta repetida ou tardia: ignorada
         a.watchdog?.cancel(false)
-        if (!cancelled) record(a, signal) // depois de cancelar, o que estava em andamento é descartado
+        settle(a, signal)
         notifyProgress(force = false)
         fill()
     }
@@ -197,9 +208,25 @@ class StreamTestEngine(
     private fun onWatchdog(token: Long) {
         val a = active.remove(token) ?: return
         guarded { a.handle?.cancel() }
-        if (!cancelled) record(a, ProbeSignal.PrepareTimeout)
+        settle(a, ProbeSignal.PrepareTimeout)
         notifyProgress(force = false)
         fill()
+    }
+
+    /** Registra o resultado ou, se foi só timeout e ainda há tentativa extra, devolve o canal para a fila. */
+    private fun settle(a: Active, signal: ProbeSignal) {
+        if (cancelled) return // depois de cancelar, o que estava em andamento é descartado
+        if (a.attempt < config.timeoutRetries.coerceAtMost(1) && isRetryable(signal)) {
+            retryQueue.addLast(a.channel)
+        } else {
+            record(a, signal)
+        }
+    }
+
+    private fun isRetryable(signal: ProbeSignal): Boolean = when (signal) {
+        ProbeSignal.ConnectTimeout, ProbeSignal.PrepareTimeout, ProbeSignal.ConfirmTimeout -> true
+        is ProbeSignal.HttpError -> signal.status == 408 || signal.status == 429
+        else -> false
     }
 
     private fun record(a: Active, signal: ProbeSignal) {
@@ -220,7 +247,7 @@ class StreamTestEngine(
         if (state.isTerminal || active.isNotEmpty()) return
         when {
             cancelled -> finish(EngineState.CANCELLED)
-            sourceExhausted -> finish(EngineState.FINISHED)
+            sourceExhausted && retryQueue.isEmpty() -> finish(EngineState.FINISHED)
         }
     }
 

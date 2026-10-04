@@ -88,6 +88,13 @@ data class StreamTestConfig(
     val feederQueueSize: Int = DEFAULT_FEEDER_QUEUE_SIZE,
     /** Folga sobre a soma dos timeouts antes de o motor dar o teste por travado (rede de segurança). */
     val watchdogMarginMs: Long = DEFAULT_WATCHDOG_MARGIN_MS,
+    /**
+     * Quantas vezes um canal que deu timeout (ou 408/429) é testado de novo, no fim da lista, com
+     * prazos maiores. Timeout nem sempre é link morto: servidor lento ou sobrecarregado também estoura.
+     */
+    val timeoutRetries: Int = 0,
+    /** Multiplicador dos prazos nas tentativas extras. */
+    val retryTimeoutFactor: Double = DEFAULT_RETRY_TIMEOUT_FACTOR,
 ) {
     init {
         require(concurrency in 1..MAX_CONCURRENCY) { "concurrency fora de 1..$MAX_CONCURRENCY" }
@@ -98,7 +105,18 @@ data class StreamTestConfig(
         require(confirmBufferedMs >= 0) { "confirmBufferedMs não pode ser negativo" }
         require(feederQueueSize >= 1) { "feederQueueSize deve ser pelo menos 1" }
         require(watchdogMarginMs >= 0) { "watchdogMarginMs não pode ser negativo" }
+        require(timeoutRetries >= 0) { "timeoutRetries não pode ser negativo" }
+        require(retryTimeoutFactor >= 1.0) { "retryTimeoutFactor deve ser pelo menos 1" }
     }
+
+    /** Configuração das tentativas extras: mesmos limites, prazos multiplicados por [retryTimeoutFactor]. */
+    fun forRetry(): StreamTestConfig = copy(
+        connectTimeoutMs = (connectTimeoutMs * retryTimeoutFactor).toInt(),
+        readTimeoutMs = (readTimeoutMs * retryTimeoutFactor).toInt(),
+        prepareTimeoutMs = (prepareTimeoutMs * retryTimeoutFactor).toLong(),
+        confirmTimeoutMs = (confirmTimeoutMs * retryTimeoutFactor).toLong(),
+        timeoutRetries = 0,
+    )
 
     /**
      * Prazo máximo de um teste inteiro. Um teste que passar disso (sonda travada) é cancelado pelo
@@ -117,6 +135,7 @@ data class StreamTestConfig(
         const val DEFAULT_CONFIRM_BUFFERED_MS = 500L
         const val DEFAULT_FEEDER_QUEUE_SIZE = 64
         const val DEFAULT_WATCHDOG_MARGIN_MS = 5_000L
+        const val DEFAULT_RETRY_TIMEOUT_FACTOR = 1.5
     }
 }
 
